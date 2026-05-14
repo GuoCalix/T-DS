@@ -1,0 +1,41 @@
+{
+  "name": "tnds",
+  "displayName": "T&DS",
+  "description": "Test data and debug in your programming assignments with AI assistance.",
+  "publisher": "calix",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other",
+    "Testing",
+    "Debuggers"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "tnds.runTest",
+        "title": "T&DS: Run Batch Test"
+      },
+      {
+        "command": "tnds.runDebug",
+        "title": "T&DS: Debug & AI Assist"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.1.3",
+    "@vscode/vsce": "^2.19.0"
+  }
+}

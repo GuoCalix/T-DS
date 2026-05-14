@@ -1,0 +1,15 @@
+.vscode/**
+.vscode-test/**
+out/**
+node_modules/**
+src/**
+.gitignore
+yarn.lock
+package-lock.json
+*.vsix
+__pycache__/**
+*.pyc
+example/**
+tsconfig.json
+!out/extension.js
+!out/extension.js.map

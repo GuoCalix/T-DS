@@ -1,218 +1,96 @@
-import time
-import random
+import argparse
 import os
 import subprocess
-import argparse
+import tempfile
 import sys
 import shutil
-import tempfile
-
-exec_name = {
-    '1_subsequence': ['main.cpp', 'subsequence'],
-    '2_wordle': ['main.cpp', 'wordle'],
-    # '3_type': ['main.cpp', 'type'],
-    '3_a_b': ['main.cpp','a_b']
-
-}
-
-# exec_name: {'task_name': ['main.cpp', 'executeable']}
-
-# absoulte path of the current directory
-def get_thisdir():
-    return os.path.dirname(os.path.abspath(
-        sys.executable if getattr(sys, 'frozen', False) else __file__
-    ))
-
-
-def get_cs1604_path(cs1604_txt):
-    # cs1604_txt = os.path.join(thisdir, 'source', 'cs1604.txt')
-    try:
-        f = open(cs1604_txt,encoding='utf-8')
-    except FileNotFoundError:
-        print(
-            'error: to use StanfordCppLib, you must create a text file',
-            cs1604_txt,
-            'whose contents is the absolute path '
-            'to the compiled StanfordCppLib.',
-            sep='\n', file=sys.stderr
-        )
-        sys.exit(1)
-    with f:
-        s = f.read().strip()
-    if not os.path.isabs(s):
-        print(
-            'error: the path to StanfordCppLib must be an absolute path, but',
-            s,
-            'is supplied, which is not an absolute path.',
-            sep='\n', file=sys.stderr
-        )
-        sys.exit(1)
-    return s
-
 
 def init_args():
-    parser = argparse.ArgumentParser('Judger For Homework 4')
-    parser.add_argument(
-        '-T', '--task', choices=list(exec_name.keys()),
-        help='the task to judge'
-    )
-    parser.add_argument(
-        '-I', '--input_file', required=True,
-        help='the path of input data file'
-    )
-    parser.add_argument(
-        '-O', '--standard_file', required=True,
-        help='the path of standard output file'
-    )
-    parser.add_argument(
-        '-S', '--source_dir', default='.',
-        help='the folder containing the soruce code'
-    )
-    parser.add_argument(
-        '--timeout', default=2, type=float,
-        help='the timeout for judging (in seconds), default is 2'
-    )
+    parser = argparse.ArgumentParser(description='Generic Judger for T&DS')
+    parser.add_argument('--instance', required=True, help='Path to the source code (.cpp, .py, etc.)')
+    parser.add_argument('--input', required=True, help='Path to the input data file (.in)')
+    parser.add_argument('--standard', required=False, help='Path to the standard output file (.out)')
+    parser.add_argument('--timeout', default=2.0, type=float, help='Timeout in seconds')
+    return parser.parse_args()
 
-    args = parser.parse_args()
-
-    thisdir = get_thisdir()
-    # get the include and lib path from cs1604.txt in the source dir
-    cs1604_txt = os.path.join(thisdir, 'source', 'cs1604.txt')
-    if os.path.exists(cs1604_txt):
-        cs1604_path = get_cs1604_path(cs1604_txt)
-        args.cs1604_cxxargs = [f'-I{os.path.join(cs1604_path, "include")}']
-        args.cs1604_ldargs = [
-            f'-L{os.path.join(cs1604_path, "lib")}', '-lCS1604'
-        ]
-    else:
-        args.cs1604_cxxargs = []
-        args.cs1604_ldargs = []
-
-    return args
-
-
-def get_random_filename():
-    lst = []
-    for x in range(10):
-        lst.append(chr(ord('A') + random.randint(0, 25)))
-    temp_path = ''.join(lst)
-    return temp_path
-
-
-def standard_judger(answer, std, max_score=10):
-    with open(std) as Fin:
-        c_std = Fin.read()
-        c_std = c_std.rstrip().split('\n')
-    with open(answer) as Fin:
-        c_answer = Fin.read()
-        c_answer = c_answer.rstrip().split('\n')
+def standard_judger(answer_file, std_file):
+    with open(std_file, 'r', encoding='utf-8') as f:
+        c_std = [line.rstrip() for line in f.read().splitlines()]
+    with open(answer_file, 'r', encoding='utf-8') as f:
+        c_answer = [line.rstrip() for line in f.read().splitlines()]
+        
     if len(c_std) != len(c_answer):
-        return 'File length differs', 0
-    for idx, lin_std in enumerate(c_std):
-        lin_ans = c_answer[idx].rstrip()
-        lin_std = lin_std.rstrip()
+        return False, f'File length differs: Expected {len(c_std)} lines, got {len(c_answer)} lines'
+        
+    for idx, (lin_std, lin_ans) in enumerate(zip(c_std, c_answer)):
         if lin_std != lin_ans:
-            error_message = f'Wrong answer found at Line {idx + 1}'
-            return error_message, 0
-    return 'Correct', max_score
+            return False, f'Wrong answer found at Line {idx + 1}:\nExpected: {lin_std}\nGot     : {lin_ans}'
+            
+    return True, 'Correct'
 
+def run_test(instance, input_file, standard_file, timeout):
+    if not os.path.exists(instance):
+        return {"status": "Error", "message": "Source code not found"}
+    if not os.path.exists(input_file):
+        return {"status": "Error", "message": "Input file not found"}
+    if standard_file and not os.path.exists(standard_file):
+        return {"status": "Error", "message": "Standard output file not found"}
 
-def judge(exe, timeout, workdir, args, max_score=10, judger=standard_judger):
-    file_name = get_random_filename() + '.out'
-    output_file = os.path.join(workdir, file_name)
-    exec_file = os.path.join(workdir, exe)
-    Fout = open(output_file, 'w')
-    Fin = open(args.input_file)
-
-    with Fin:
-        with Fout:
+    ext = os.path.splitext(instance)[1].lower()
+    workdir = tempfile.mkdtemp()
+    
+    try:
+        if ext == '.cpp' or ext == '.c++' or ext == '.cc':
+            exec_file = os.path.join(workdir, 'program.exe' if os.name == 'nt' else 'program')
+            compile_cmd = ['g++', instance, '-o', exec_file, '-O2', '-Wall', '-std=c++17']
             try:
-                subprocess.run(
-                    [exec_file], check=True, timeout=timeout,
-                    stdin=Fin, stdout=Fout
-                )
-            except subprocess.TimeoutExpired:
-                return 'Out of Time Limit!', 0
+                subprocess.run(compile_cmd, check=True, capture_output=True, text=True)
             except subprocess.CalledProcessError as e:
-                return f'Runtime Error with returncode {e.returncode}', 0
-    return judger(output_file, args.standard_file)
+                return {"status": "CompileError", "message": e.stderr}
+            run_cmd = [exec_file]
+        elif ext == '.py':
+            run_cmd = [sys.executable, instance]
+        else:
+            return {"status": "Error", "message": f"Unsupported language extension: {ext}"}
 
+        output_file = os.path.join(workdir, 'output.out')
+        
+        with open(input_file, 'r') as fin, open(output_file, 'w') as fout:
+            try:
+                subprocess.run(run_cmd, check=True, timeout=timeout, stdin=fin, stdout=fout, stderr=subprocess.PIPE, text=True)
+            except subprocess.TimeoutExpired:
+                return {"status": "TimeLimitExceeded", "message": "Out of Time Limit!"}
+            except subprocess.CalledProcessError as e:
+                return {"status": "RuntimeError", "message": f"Runtime Error with returncode {e.returncode}\n{e.stderr}"}
 
-forbid_map = {'1_area' : [ "Vector", "vector", "Stack", "stack", "Queue", "queue", "Map", "map" ],
-              '2_regex' : ["string", "String", "regex", "Vector", "vector", "Stack", "stack", "Queue", "queue", "Map", "map"],
-              '3_register' : ["Vector", "vector", "Stack", "stack", "Queue", "queue"]}
-
-# def check_forbid(args, main_dir):
-#     if args.task in forbid_map:
-#         forbid_list = forbid_map[args.task]
-#         with open(main_dir, 'rb') as f:
-#             for l in f.readlines():
-#                 for keyword in forbid_list:
-#                     if l.find(b"include") != -1:
-#                         if l.find(bytes(keyword, 'utf-8')) != -1:
-#                             print(f'[INFO] #include "{keyword}" is forbidden in {args.task}')
-#                             print('[SCORE] 0')
-#                             return True
-#     return False
-
-def check_forbid(args, main_dir):
-    if args.task in forbid_map:
-        forbid_list = forbid_map[args.task]
-        with open(main_dir, 'rb') as f:
-            for l in f.readlines():
-                for keyword in forbid_list:
-                    if l.find(b"include") != -1:
-                        pos = l.find(bytes(keyword, 'utf-8'))
-                        if pos != -1:
-                            # whitelist : cstring
-                            found = False
-                            if keyword == 'string':
-                                while pos > 0:
-                                    if l[pos-1] == 99 or l[pos-1] == 67:
-                                        pos = l.find(bytes(keyword, 'utf-8'), pos + 1)
-                                        continue
-                                    else:
-                                        found = True
-                                        break
-                            else:
-                                found = True
-                            if found:
-                                print(f'[INFO] #include "{keyword}" is forbidden in {args.task}')
-                                print('[SCORE] 0')
-                                return True
-    return False
+        if standard_file:
+            passed, msg = standard_judger(output_file, standard_file)
+            if passed:
+                return {"status": "Accepted", "message": msg}
+            else:
+                return {"status": "WrongAnswer", "message": msg, "wrong_output_file": output_file}
+        else:
+            # If no standard file, we just test if it runs without errors
+            return {"status": "Success", "message": "Execution finished successfully without validation against standard output."}
+            
+    finally:
+        # Note: if we want to keep wrong output for OpenAI, we shouldn't delete the temp directory completely,
+        # or we should copy the output file back. For now, we will read it and include in the message if needed.
+        shutil.rmtree(workdir, ignore_errors=True)
 
 if __name__ == '__main__':
     args = init_args()
-    print('[INFO] Config:', args)
-    workdir = tempfile.mkdtemp()
+    
+    # Infer standard_file if not provided
+    std_file = args.standard
+    if not std_file:
+        in_path, in_ext = os.path.splitext(args.input)
+        if in_ext == '.in':
+            inferred = in_path + '.out'
+            if os.path.exists(inferred):
+                std_file = inferred
 
-    main_dir = os.path.join(args.source_dir, exec_name[args.task][0])
-    exec_dir = os.path.join(workdir, exec_name[args.task][1])
-    compile_cmd = ['g++', main_dir, '-o', exec_dir, '-g', '-Wall', '--std=c++11'] + args.cs1604_cxxargs + args.cs1604_ldargs
-    # [f'g++ \"{main_dir}\" -o \"{exec_dir}\" -g -Wall --std=c++11'] + args.cs1604_cxxargs + args.cs1604_ldargs
-
-    if not os.path.exists(args.input_file):
-        print(f'[INFO] Missing Input File')
-    elif not os.path.exists(args.standard_file):
-        print(f'[INFO] Missing Standard Output File')
-    elif not os.path.exists(main_dir):
-        print(f'[INFO] Missing Source Code')
-        print('[SCORE] 0')
-    else:
-        # check whether container is used
-        if check_forbid(args, main_dir):
-            exit(-1)
-        cp_pro = subprocess.run(compile_cmd)
-        ret_code = cp_pro.returncode
-        if ret_code != 0:
-            print('[INFO] Compile Error\n[SCORE] 0')
-            # print(cp_pro.args)
-        else:
-            msg, score = judge(
-                exec_name[args.task][1], args.timeout,
-                workdir, args, 10, standard_judger
-            )
-            print(f'[INFO] {msg}\n[SCORE] {score}')
-
-    shutil.rmtree(os.path.abspath(workdir), ignore_errors=True)
+    result = run_test(args.instance, args.input, std_file, args.timeout)
+    print(f"[TEST_RESULT] {result['status']}: {result['message']}")
+    if result['status'] != 'Accepted' and result['status'] != 'Success':
+        sys.exit(1)
