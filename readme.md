@@ -13,6 +13,14 @@
   - Automatically generate `.vscode/launch.json` and `.vscode/tasks.json` tailored to your source code, enabling you to use VSCode's native `F5` debugging experience.
   - **OpenAI Integration**: If a test case fails, T&DS will automatically send the source code, the expected output, and your actual output to the OpenAI API (if configured). The AI will analyze the mismatch and provide concrete suggestions to fix your code!
 
+## Installation
+
+1. Go to the [Releases](https://github.com/GuoCalix/T-DS/releases) page of the GitHub repository.
+2. Download the latest `tnds-x.x.x.vsix` file.
+3. Open VSCode, go to the **Extensions** view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
+4. Click on the `...` menu at the top right of the Extensions view.
+5. Select **Install from VSIX...** and choose the downloaded file.
+
 ## Requirements
 
 The extension bundles a Python backend to execute tests. You must have **Python 3** installed and available in your system `PATH` (executable as `python`).
